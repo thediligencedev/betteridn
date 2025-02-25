@@ -1,0 +1,14 @@
+root = "."
+
+[build]
+  cmd = "go build -o tmp/main ./cmd/server/main.go"
+  bin = "tmp/main"
+  full_bin = "tmp/main"
+  include_ext = ["go", "tpl", "html"]
+  exclude_dir = ["assets", "tmp"]
+  delay = 1000
+
+[run]
+  cmd = "./tmp/main"
+  # Set the working directory to the project root
+  dir = "."

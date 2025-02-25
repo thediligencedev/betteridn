@@ -1,0 +1,22 @@
+run:
+  enable-all: true
+
+linters-settings:
+  godox:
+    keywords: ["TODO", "FIXME"]
+
+linters:
+  enable:
+    - godox
+    - gofmt
+    - goimports
+    - govet
+    - staticcheck
+    - unused
+    - errcheck
+
+issues:
+  exclude-rules:
+    - path: _test.go
+      linters:
+        - errcheck

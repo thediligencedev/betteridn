@@ -1,0 +1,26 @@
+# Ignore .env file
+.env
+
+# Ignore Go binaries
+bin/
+*.exe
+
+# Ignore IDE-specific files
+.idea/
+.vscode/
+
+# Ignore build artifacts
+*.log
+*.out
+*.test
+
+# Ignore dependency directories
+vendor/
+node_modules/
+
+# Ignore OS-specific files
+.DS_Store
+Thumbs.db
+
+# Ignore air tmp build
+tmp/

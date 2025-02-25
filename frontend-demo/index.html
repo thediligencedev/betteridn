@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>HTMX Auth Demo</title>
+  <!-- HTMX from CDN -->
+  <script src="https://unpkg.com/htmx.org@1.9.2"></script>
+  <script src="https://unpkg.com/htmx.org/dist/ext/json-enc.js"></script>
+
+  <style>
+    body { font-family: sans-serif; margin: 2rem; }
+    form { margin-bottom: 1rem; }
+    .error { color: red; }
+    .success { color: green; }
+    #messages { margin-bottom: 1rem; }
+    input, button { padding: 0.5rem; }
+    .hidden { display: none; }
+    fieldset { border: 1px solid #ccc; margin-bottom: 1rem; padding: 1rem; }
+    legend { font-weight: bold; }
+  </style>
+</head>
+<body>
+  <h1>HTMX Auth Demo</h1>
+
+  <div id="messages"></div>
+
+  <!-- 1. Sign Up with Email -->
+  <fieldset>
+    <legend>Sign Up with Email</legend>
+    <form 
+      hx-post="http://localhost:8080/api/v1/auth/signup"
+      hx-target="#messages"
+      hx-swap="innerHTML"
+      hx-ext="json-enc"
+      hx-request='{"credentials": true}'
+    >
+      <div>
+        <label>Username:</label>
+        <input type="text" name="username" required/>
+      </div>
+      <div>
+        <label>Email:</label>
+        <input type="email" name="email" required/>
+      </div>
+      <div>
+        <label>Password:</label>
+        <input type="password" name="password" required/>
+      </div>
+      <br/>
+      <button type="submit">Sign Up</button>
+    </form>
+  </fieldset>
+
+  <!-- 2. Sign In with Email -->
+  <fieldset>
+    <legend>Sign In with Email</legend>
+    <form
+      hx-post="http://localhost:8080/api/v1/auth/signin"
+      hx-target="#messages"
+      hx-swap="innerHTML"
+      hx-ext="json-enc"
+      hx-request='{"credentials": true}'
+    >
+      <div>
+        <label>Email:</label>
+        <input type="email" name="email" required/>
+      </div>
+      <div>
+        <label>Password:</label>
+        <input type="password" name="password" required/>
+      </div>
+      <br/>
+      <button type="submit">Sign In</button>
+    </form>
+  </fieldset>
+
+  <!-- 3. Google OAuth -->
+  <fieldset>
+    <legend>Google OAuth</legend>
+    <!-- 
+      We'll link directly to the route in your backend that starts the Google OAuth flow.
+      This is a normal redirect-based flow, so we are NOT using HTMX for it.
+      The user is redirected to Google for consent, then back to your Go callback.
+    -->
+    <p>Sign in with your Google account:</p>
+    <a href="http://localhost:8080/api/v1/auth/google/login">
+      <button type="button">Sign In with Google</button>
+    </a>
+  </fieldset>
+
+  <!-- 4. Get Current Session -->
+  <fieldset>
+    <legend>Get Current Session</legend>
+    <form
+      hx-get="http://localhost:8080/api/v1/auth/session"
+      hx-target="#messages"
+      hx-swap="innerHTML"
+      hx-request='{"credentials": true}'
+    >
+      <button type="submit">Get Session</button>
+    </form>
+  </fieldset>
+
+  <!-- 5. Sign Out -->
+  <fieldset>
+    <legend>Sign Out</legend>
+    <form
+      hx-post="http://localhost:8080/api/v1/auth/signout"
+      hx-target="#messages"
+      hx-swap="innerHTML"
+      hx-ext="json-enc"
+      hx-request='{"credentials": true}'
+    >
+      <button type="submit">Sign Out</button>
+    </form>
+  </fieldset>
+
+  <script>
+    // A small script to handle error responses from the server.
+    // We'll do a global event listener for htmx:afterRequest.
+    document.body.addEventListener('htmx:afterRequest', function(evt) {
+      let xhr = evt.detail.xhr;
+      if (xhr.status >= 400) {
+        // If the server responded with an error, parse it as JSON
+        let messageObj;
+        try {
+          messageObj = JSON.parse(xhr.responseText);
+        } catch (e) {
+          messageObj = { message: "Unknown error" };
+        }
+        let div = document.querySelector('#messages');
+        div.innerHTML = '<p class="error">' + messageObj.message + '</p>';
+      } else {
+        // Possibly handle success. By default, HTMX will replace #messages content with the raw response
+        // we can parse JSON if we want to unify the display, or let the server respond with HTML.
+        try {
+          let respData = JSON.parse(xhr.responseText);
+          if (respData.message) {
+            let div = document.querySelector('#messages');
+            div.innerHTML = '<p class="success">' + respData.message + '</p>';
+            if (respData.data && respData.data.user_id) {
+              div.innerHTML += '<p>User ID: ' + respData.data.user_id + '</p>';
+            }
+          }
+        } catch (err) {
+          // err
+        }
+      }
+    });
+  </script>
+</body>
+</html>
