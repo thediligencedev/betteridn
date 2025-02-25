@@ -1,15 +1,13 @@
--- pkg/db/migrations/0001_initial_schema_up.sql
-
 -- Enable UUID-OSSP extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- Table: users
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     username TEXT NOT NULL UNIQUE,
     email TEXT NOT NULL UNIQUE,
     password TEXT NOT NULL,
-    is_email_confirmed BOOLEAN DEFAULT FALSE,
+    is_email_confirmed BOOLEAN DEFAULT FALSE,  -- now always false at creation
     bio TEXT,
     avatar_url TEXT,
     preferences JSONB,
@@ -20,15 +18,17 @@ CREATE TABLE users (
 
 -- Table: email_confirmations
 CREATE TABLE email_confirmations (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
     token TEXT NOT NULL UNIQUE,
     expires_at TIMESTAMPTZ NOT NULL,
-    created_at TIMESTAMPTZ DEFAULT NOW()
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    last_sent_at TIMESTAMPTZ DEFAULT NOW(),
+    is_stale BOOLEAN DEFAULT FALSE
 );
 
+
 -- Table: posts
-CREATE TABLE posts (
+CREATE TABLE IF NOT EXISTS posts (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     title TEXT NOT NULL,
@@ -38,7 +38,7 @@ CREATE TABLE posts (
 );
 
 -- Table: comments
-CREATE TABLE comments (
+CREATE TABLE IF NOT EXISTS comments (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     post_id UUID NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -48,7 +48,7 @@ CREATE TABLE comments (
 );
 
 -- Table: post_comments_metadata
-CREATE TABLE post_comments_metadata (
+CREATE TABLE IF NOT EXISTS post_comments_metadata (
     post_id UUID NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
     first_comment_id UUID REFERENCES comments(id),
     last_comment_id UUID REFERENCES comments(id),
@@ -58,51 +58,51 @@ CREATE TABLE post_comments_metadata (
 );
 
 -- Table: post_votes
-CREATE TABLE post_votes (
+CREATE TABLE IF NOT EXISTS post_votes (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     post_id UUID NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     vote_type INT CHECK (vote_type IN (-1, 1)),
     created_at TIMESTAMPTZ DEFAULT NOW(),
-    UNIQUE (post_id, user_id)  -- Prevent multiple votes by the same user
+    UNIQUE (post_id, user_id)
 );
 
 -- Table: comment_votes
-CREATE TABLE comment_votes (
+CREATE TABLE IF NOT EXISTS comment_votes (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     comment_id UUID NOT NULL REFERENCES comments(id) ON DELETE CASCADE,
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     vote_type INT CHECK (vote_type IN (-1, 1)),
     created_at TIMESTAMPTZ DEFAULT NOW(),
-    UNIQUE (comment_id, user_id)  -- Prevent multiple votes by the same user
+    UNIQUE (comment_id, user_id)
 );
 
 -- Table: login_providers
-CREATE TABLE login_providers (
+CREATE TABLE IF NOT EXISTS login_providers (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     provider TEXT NOT NULL,
     identifier TEXT NOT NULL,
     created_at TIMESTAMPTZ DEFAULT NOW(),
-    UNIQUE (user_id, provider)  -- Ensure no duplicate providers per user
+    UNIQUE (user_id, provider)
 );
 
 -- Table: tags
-CREATE TABLE tags (
+CREATE TABLE IF NOT EXISTS tags (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name TEXT NOT NULL UNIQUE,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- Table: post_tags
-CREATE TABLE post_tags (
+CREATE TABLE IF NOT EXISTS post_tags (
     post_id UUID NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
     tag_id UUID NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
     PRIMARY KEY (post_id, tag_id)
 );
 
 -- Table: notifications
-CREATE TABLE notifications (
+CREATE TABLE IF NOT EXISTS notifications (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     from_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -115,35 +115,14 @@ CREATE TABLE notifications (
     is_deleted BOOLEAN DEFAULT FALSE
 );
 
--- Indexes for notifications
-CREATE INDEX idx_notifications_user_id ON notifications(user_id);
-CREATE INDEX idx_notifications_read_at ON notifications(read_at);
-
+CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_read_at ON notifications(read_at);
 
 -- Table: sessions
-CREATE TABLE sessions (
+CREATE TABLE IF NOT EXISTS sessions (
     token TEXT PRIMARY KEY,
     data BYTEA NOT NULL,
     expiry TIMESTAMPTZ NOT NULL
 );
 
--- Indexes for sessions
-CREATE INDEX sessions_expiry_idx ON sessions (expiry);
-
-
--- CREATE TABLE sessions (
---     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
---     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
---     token TEXT NOT NULL UNIQUE,
---     expires_at TIMESTAMPTZ NOT NULL,
---     created_at TIMESTAMPTZ DEFAULT NOW(),
---     updated_at TIMESTAMPTZ DEFAULT NOW()
--- );
-
-
-
--- Indexes for sessions
--- CREATE INDEX idx_sessions_id ON sessions(id);
--- CREATE INDEX idx_sessions_token ON sessions(token);
-
-
+CREATE INDEX IF NOT EXISTS sessions_expiry_idx ON sessions (expiry);

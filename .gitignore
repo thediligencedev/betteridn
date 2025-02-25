@@ -24,3 +24,5 @@ Thumbs.db
 
 # Ignore air tmp build
 tmp/
+
+dev.openapi.yml

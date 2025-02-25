@@ -22,6 +22,11 @@ type Config struct {
 	GoogleClientID         string
 	GoogleClientSecret     string
 	GoogleOAuthRedirectURL string
+	SMTPHost               string
+	SMTPPort               string
+	SMTPFrom               string
+	SMTPUser               string
+	SMTPPass               string
 }
 
 func Load() (*Config, error) {
@@ -48,7 +53,12 @@ func Load() (*Config, error) {
 		SessionExpiry:          sessionExpiry,
 		GoogleClientID:         os.Getenv("GOOGLE_CLIENT_ID"),
 		GoogleClientSecret:     os.Getenv("GOOGLE_CLIENT_SECRET"),
-		GoogleOAuthRedirectURL: os.Getenv("GOOGLE_REDIRECT_URL"), // e.g. http://localhost:8080/api/v1/auth/google/callback
+		GoogleOAuthRedirectURL: os.Getenv("GOOGLE_REDIRECT_URL"),
+		SMTPHost:               os.Getenv("SMTP_HOST"),
+		SMTPPort:               os.Getenv("SMTP_PORT"),
+		SMTPFrom:               os.Getenv("SMTP_FROM"),
+		SMTPUser:               os.Getenv("SMTP_USER"),
+		SMTPPass:               os.Getenv("SMTP_PASS"),
 	}, nil
 }
 

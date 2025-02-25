@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/alexedwards/scs/v2"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/thediligencedev/betteridn/pkg/response"
 	"github.com/thediligencedev/betteridn/pkg/validator"
@@ -15,30 +16,34 @@ import (
 type Handler struct {
 	service        *AuthService
 	sessionManager *scs.SessionManager
+	confService    *ConfirmationService
 }
 
-// NewHandler creates a new Handler.
-func NewHandler(pool *pgxpool.Pool, sessionManager *scs.SessionManager) *Handler {
+// NewHandler modifies to accept ConfirmationService as well
+func NewHandler(
+	pool *pgxpool.Pool,
+	sessionManager *scs.SessionManager,
+	cs *ConfirmationService,
+) *Handler {
 	return &Handler{
-		service:        NewAuthService(pool),
+		service:        NewAuthService(pool, cs),
 		sessionManager: sessionManager,
+		confService:    cs,
 	}
 }
 
-// SignUpRequest is the expected request body for sign up.
 type SignUpRequest struct {
 	Username string `json:"username" validate:"required"`
 	Email    string `json:"email" validate:"required,email"`
 	Password string `json:"password" validate:"required,min=6"`
 }
 
-// SignInRequest is the expected request body for sign in.
 type SignInRequest struct {
 	Email    string `json:"email" validate:"required"`
 	Password string `json:"password" validate:"required"`
 }
 
-// SignUp creates a new user account
+// SignUp -> sign up user, send confirmation
 func (h *Handler) SignUp(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		response.RespondWithError(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -55,7 +60,8 @@ func (h *Handler) SignUp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := h.service.SignUp(r.Context(), req.Username, req.Email, req.Password)
+	ctx := r.Context()
+	err := h.service.SignUp(ctx, req.Username, req.Email, req.Password)
 	if err != nil {
 		switch err {
 		case ErrUserAlreadyExists:
@@ -66,17 +72,17 @@ func (h *Handler) SignUp(w http.ResponseWriter, r *http.Request) {
 			return
 		default:
 			log.Printf("SignUp error: %v", err)
-			response.RespondWithError(w, http.StatusInternalServerError, "internal server error")
+			response.RespondWithError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
 	}
 
-	// Success response
-	responseJSON := map[string]string{"message": "successfully created user"}
+	// Success
+	responseJSON := map[string]string{"message": "successfully created user, please check your email to confirm"}
 	response.RespondWithJSON(w, http.StatusOK, responseJSON)
 }
 
-// SignIn logs a user in (creates or renews a session)
+// SignIn -> user signs in
 func (h *Handler) SignIn(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		response.RespondWithError(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -93,21 +99,17 @@ func (h *Handler) SignIn(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
-
-	// Check if user is already logged in
 	currentUserID := h.sessionManager.GetString(ctx, "user_id")
 	if currentUserID != "" {
-		// Already logged in -> renew token
+		// Already logged in
 		err := h.sessionManager.RenewToken(ctx)
 		if err != nil {
 			log.Printf("Failed to renew session token: %v", err)
 			response.RespondWithError(w, http.StatusInternalServerError, "internal server error")
 			return
 		}
-
-		// Return success with current user_id
 		responseJSON := map[string]interface{}{
-			"message": "user successfully signed in",
+			"message": "user already signed in",
 			"data": map[string]string{
 				"user_id": currentUserID,
 			},
@@ -116,7 +118,7 @@ func (h *Handler) SignIn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Not logged in -> check credentials
+	// Attempt sign in
 	userID, err := h.service.SignIn(ctx, req.Email, req.Password)
 	if err != nil {
 		switch err {
@@ -130,48 +132,55 @@ func (h *Handler) SignIn(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Valid credentials -> create/renew the session
+	//  Create session
 	err = h.sessionManager.RenewToken(ctx)
 	if err != nil {
 		log.Printf("Failed to create session token: %v", err)
 		response.RespondWithError(w, http.StatusInternalServerError, "failed to create session")
 		return
 	}
-
-	// Store only simple data in the session
 	h.sessionManager.Put(ctx, "user_id", userID.String())
 
-	// Return success
+	//  Check if user is confirmed
+	var isConfirmed bool
+	qErr := h.service.pool.QueryRow(ctx,
+		`SELECT is_email_confirmed FROM users WHERE id = $1`, userID).Scan(&isConfirmed)
+	if qErr != nil {
+		log.Printf("error checking is_email_confirmed: %v", qErr)
+	}
+
+	//  Return success + a warning if not confirmed
 	responseJSON := map[string]interface{}{
 		"message": "user successfully signed in",
 		"data": map[string]string{
 			"user_id": userID.String(),
 		},
 	}
+	if !isConfirmed {
+		responseJSON["warning"] = "Your email is not yet confirmed. Please check your inbox."
+	}
+
 	response.RespondWithJSON(w, http.StatusOK, responseJSON)
 }
 
-// SignOut logs the user out by destroying the session
+// SignOut -> destroy session
 func (h *Handler) SignOut(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		response.RespondWithError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	ctx := r.Context()
 
-	// If we reach here, user is authenticated, so let's destroy the session
-	err := h.sessionManager.Destroy(ctx)
-	if err != nil {
+	ctx := r.Context()
+	if err := h.sessionManager.Destroy(ctx); err != nil {
 		log.Printf("SignOut error: %v", err)
 		response.RespondWithError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
-
 	responseJSON := map[string]string{"message": "successfully signed out"}
 	response.RespondWithJSON(w, http.StatusOK, responseJSON)
 }
 
-// GetCurrentSession returns the current logged in user session data
+// GetCurrentSession -> return current user session data
 func (h *Handler) GetCurrentSession(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		response.RespondWithError(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -179,19 +188,78 @@ func (h *Handler) GetCurrentSession(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 	userID := h.sessionManager.GetString(ctx, "user_id")
-
 	if userID == "" {
-		// Should never happen because of the auth check, but just in case
 		response.RespondWithError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 
-	// Return success with current user_id
 	responseJSON := map[string]interface{}{
 		"message": "successfully get current session",
-		"data": map[string]string{
-			"user_id": userID,
-		},
+		"data":    map[string]string{"user_id": userID},
 	}
+	response.RespondWithJSON(w, http.StatusOK, responseJSON)
+}
+
+// ConfirmEmail -> GET /api/v1/auth/confirm-email?token=xxx
+func (h *Handler) ConfirmEmail(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		response.RespondWithError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		response.RespondWithError(w, http.StatusBadRequest, "missing token")
+		return
+	}
+
+	ctx := r.Context()
+	err := h.confService.ConfirmEmailByToken(ctx, token)
+	if err != nil {
+		// We might show the error or redirect to an error page
+		response.RespondWithError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	// success
+	responseJSON := map[string]string{"message": "email confirmed successfully"}
+	response.RespondWithJSON(w, http.StatusOK, responseJSON)
+}
+
+// ResendConfirmation -> POST /api/v1/auth/resend-confirmation
+func (h *Handler) ResendConfirmation(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		response.RespondWithError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	ctx := r.Context()
+
+	// Check if user is logged in (or pass email in body). Up to your design.
+	userID := h.sessionManager.GetString(ctx, "user_id")
+	if userID == "" {
+		response.RespondWithError(w, http.StatusUnauthorized, "not logged in")
+		return
+	}
+	uID, err := uuid.Parse(userID)
+	if err != nil {
+		response.RespondWithError(w, http.StatusBadRequest, "invalid user_id session")
+		return
+	}
+
+	// fetch user's email from DB
+	var emailStr string
+	err = h.service.pool.QueryRow(ctx, `SELECT email FROM users WHERE id = $1`, uID).Scan(&emailStr)
+	if err != nil {
+		response.RespondWithError(w, http.StatusNotFound, "user not found")
+		return
+	}
+
+	// call GenerateAndSendConfirmation
+	err = h.confService.GenerateAndSendConfirmation(ctx, uID, emailStr)
+	if err != nil {
+		response.RespondWithError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	responseJSON := map[string]string{"message": "confirmation email resent. check your inbox."}
 	response.RespondWithJSON(w, http.StatusOK, responseJSON)
 }

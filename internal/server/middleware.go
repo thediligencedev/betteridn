@@ -3,7 +3,6 @@ package server
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"time"
 
@@ -23,12 +22,42 @@ func Chain(h http.Handler, middlewares ...Middleware) http.Handler {
 func Logger(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
-		log.Printf("Started %s %s", r.Method, r.URL.Path)
 
-		next.ServeHTTP(w, r)
+		// We'll implement a small wrapper to capture response status
+		rw := &statusResponseWriter{ResponseWriter: w, statusCode: 200}
 
-		log.Printf("Completed %s %s in %v", r.Method, r.URL.Path, time.Since(start))
+		next.ServeHTTP(rw, r)
+
+		duration := time.Since(start)
+
+		// Build the log entry
+		logEntry := map[string]interface{}{
+			"timestamp":   time.Now().Format(time.RFC3339),
+			"level":       "info",
+			"msg":         "HTTP request",
+			"method":      r.Method,
+			"path":        r.URL.Path,
+			"status":      rw.statusCode,
+			"latency_ms":  duration.Milliseconds(),
+			"user_agent":  r.UserAgent(),
+			"remote_addr": r.RemoteAddr,
+		}
+
+		// Print as JSON line
+		logLine, _ := json.Marshal(logEntry)
+		println(string(logLine)) // or use your logger
 	})
+}
+
+// statusResponseWriter is a helper to capture status code
+type statusResponseWriter struct {
+	http.ResponseWriter
+	statusCode int
+}
+
+func (srw *statusResponseWriter) WriteHeader(code int) {
+	srw.statusCode = code
+	srw.ResponseWriter.WriteHeader(code)
 }
 
 // TODO: fix the origin, allow methods, and allow headers as needed

@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/thediligencedev/betteridn/internal/auth"
 	"github.com/thediligencedev/betteridn/internal/config"
+	"github.com/thediligencedev/betteridn/internal/worker"
 )
 
 type Server struct {
@@ -18,35 +19,49 @@ type Server struct {
 	port           string
 	sessionManager *scs.SessionManager
 	httpServer     *http.Server
+	emailWorker    *worker.EmailWorker
 }
 
 func New(pool *pgxpool.Pool, cfg *config.Config) *Server {
+	// 1. Initialize session manager
 	sessionManager := scs.New()
 	sessionManager.Store = pgxstore.New(pool)
-	sessionManager.Lifetime = cfg.SessionExpiry // e.g. 7 days
+	sessionManager.Lifetime = cfg.SessionExpiry
 	sessionManager.Cookie.HttpOnly = true
 	sessionManager.Cookie.SameSite = http.SameSiteLaxMode
-
-	// For local dev, typically:
 	sessionManager.Cookie.Secure = false
 	sessionManager.Cookie.Path = "/"
 
-	// For production, you might set:
-	// sessionManager.Cookie.Secure = true
-	// sessionManager.Cookie.SameSite = http.SameSiteStrictMode
+	// 2. Initialize email worker (SMTP config from env)
+	emailWorker := worker.NewEmailWorker(
+		cfg.SMTPHost,
+		cfg.SMTPPort,
+		cfg.SMTPFrom,
+		cfg.SMTPUser,
+		cfg.SMTPPass,
+	)
 
-	// Initialize the global Google OAuth config
+	// 3. Initialize ConfirmationService using pgxpool.Pool
+	confirmationService := auth.NewConfirmationService(pool, emailWorker)
+
+	// 4. Initialize Google OAuth
 	auth.InitGoogleOAuth(cfg)
+	// Pass the confirmationService as 4th param
 	googleHandler := auth.NewGoogleHandler(pool, sessionManager, cfg)
+
+	// 5. Build your main AuthHandler with the same confirmationService
+	authHandler := auth.NewHandler(pool, sessionManager, confirmationService)
 
 	mux := http.NewServeMux()
 	s := &Server{
 		pool:           pool,
 		port:           cfg.ServerPort,
 		sessionManager: sessionManager,
+		emailWorker:    emailWorker,
 	}
 
-	RegisterRoutes(mux, pool, sessionManager, googleHandler)
+	// 6. Register your routes
+	RegisterRoutes(mux, pool, sessionManager, googleHandler, authHandler)
 
 	handler := sessionManager.LoadAndSave(mux)
 
@@ -64,5 +79,7 @@ func (s *Server) Start() error {
 
 func (s *Server) Shutdown(ctx context.Context) error {
 	log.Println("Stopping HTTP server...")
+	// close the email worker
+	s.emailWorker.Close()
 	return s.httpServer.Shutdown(ctx)
 }
