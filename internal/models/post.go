@@ -25,3 +25,9 @@ type VoteCount struct {
 	Upvotes   int `json:"upvotes"`
 	Downvotes int `json:"downvotes"`
 }
+
+// VoteResult represents the result of a vote operation
+type VoteResult struct {
+	VoteCount   VoteCount
+	VoteRemoved bool
+}

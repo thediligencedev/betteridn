@@ -260,7 +260,7 @@ func (s *PostService) UpdatePost(ctx context.Context, postID, userID uuid.UUID, 
 }
 
 // VotePost records a vote on a post
-func (s *PostService) VotePost(ctx context.Context, postID, userID uuid.UUID, voteType int) (*models.VoteCount, error) {
+func (s *PostService) VotePost(ctx context.Context, postID, userID uuid.UUID, voteType int) (*models.VoteResult, error) {
 	// Validate vote type
 	if voteType != 1 && voteType != -1 {
 		return nil, ErrInvalidVoteType
@@ -284,6 +284,9 @@ func (s *PostService) VotePost(ctx context.Context, postID, userID uuid.UUID, vo
 	}
 	defer tx.Rollback(ctx)
 
+	// Track if the vote was removed
+	voteRemoved := false
+
 	// Check if user has already voted on this post
 	var existingVoteID uuid.UUID
 	var existingVoteType int
@@ -303,6 +306,7 @@ func (s *PostService) VotePost(ctx context.Context, postID, userID uuid.UUID, vo
 			if err != nil {
 				return nil, fmt.Errorf("failed to remove vote: %w", err)
 			}
+			voteRemoved = true
 		} else {
 			// Different vote type, update the vote
 			_, err = tx.Exec(ctx, `
@@ -335,7 +339,10 @@ func (s *PostService) VotePost(ctx context.Context, postID, userID uuid.UUID, vo
 		return nil, err
 	}
 
-	return voteCount, nil
+	return &models.VoteResult{
+		VoteCount:   *voteCount,
+		VoteRemoved: voteRemoved,
+	}, nil
 }
 
 // Helper functions

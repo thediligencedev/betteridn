@@ -281,6 +281,7 @@ func (h *Handler) UpdatePost(w http.ResponseWriter, r *http.Request) {
 }
 
 // VotePost handles voting on a post
+// VotePost handles voting on a post
 func (h *Handler) VotePost(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		response.RespondWithError(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -349,7 +350,7 @@ func (h *Handler) VotePost(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Vote on post
-	voteCount, err := h.service.VotePost(r.Context(), postID, userUUID, req.VoteType)
+	result, err := h.service.VotePost(r.Context(), postID, userUUID, req.VoteType)
 	if err != nil {
 		switch err {
 		case ErrPostNotFound:
@@ -363,12 +364,18 @@ func (h *Handler) VotePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Determine the appropriate message based on whether the vote was removed
+	message := "vote recorded successfully"
+	if result.VoteRemoved {
+		message = "successfully removed vote"
+	}
+
 	// Success
 	responseJSON := map[string]interface{}{
-		"message": "vote recorded successfully",
+		"message": message,
 		"data": map[string]interface{}{
 			"id":         postID.String(),
-			"vote_count": voteCount,
+			"vote_count": result.VoteCount,
 		},
 	}
 	response.RespondWithJSON(w, http.StatusOK, responseJSON)
