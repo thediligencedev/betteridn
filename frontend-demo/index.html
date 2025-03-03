@@ -99,11 +99,6 @@
   <!-- 3. Google OAuth -->
   <fieldset>
     <legend>Google OAuth</legend>
-    <!-- 
-      We'll link directly to the route in your backend that starts the Google OAuth flow.
-      This is a normal redirect-based flow, so we are NOT using HTMX for it.
-      The user is redirected to Google for consent, then back to your Go callback.
-    -->
     <p>Sign in with your Google account:</p>
     <a href="http://localhost:8080/api/v1/auth/google/login">
       <button type="button">Sign In with Google</button>
@@ -128,7 +123,360 @@
     </form>
   </fieldset>
 
+  <!-- 6. Create a Post -->
+  <fieldset>
+    <legend>Create a Post</legend>
+    <form id="create-post-form" hx-post="http://localhost:8080/api/v1/posts" hx-target="#messages" hx-swap="innerHTML">
+      <div>
+        <label>Title:</label>
+        <input type="text" name="title" required />
+      </div>
+      <div>
+        <label>Content:</label>
+        <textarea name="content" required></textarea>
+      </div>
+      <div>
+        <label>Categories:</label>
+        <div>
+          <label><input type="checkbox" name="categories" value="Kesehatan" /> Kesehatan</label>
+          <label><input type="checkbox" name="categories" value="Politik" /> Politik</label>
+          <label><input type="checkbox" name="categories" value="Edukasi" /> Edukasi</label>
+        </div>
+      </div>
+      <br />
+      <button type="submit">Create Post</button>
+    </form>
+  </fieldset>
+
+  <!-- 7. Get Paginated Posts -->
+  <fieldset>
+    <legend>Get Paginated Posts</legend>
+    <form hx-get="http://localhost:8080/api/v1/posts" hx-target="#messages" hx-swap="innerHTML"
+      hx-request='{"credentials": true}'>
+      <div>
+        <label>Page:</label>
+        <input type="number" name="page" value="1" min="1" />
+      </div>
+      <div>
+        <label>Limit:</label>
+        <input type="number" name="limit" value="20" min="1" />
+      </div>
+      <br />
+      <button type="submit">Get Posts</button>
+    </form>
+  </fieldset>
+
+  <!-- 8. Get a Specific Post by ID -->
+  <fieldset>
+    <legend>Get a Post by ID</legend>
+    <form id="get-post-form" hx-get="#" hx-target="#messages" hx-swap="innerHTML" hx-request='{"credentials": true}'>
+      <div>
+        <label>Post ID:</label>
+        <input type="text" name="postId" required />
+      </div>
+      <br />
+      <button type="submit">Get Post</button>
+    </form>
+  </fieldset>
+
+  <!-- 9. Update a Post -->
+  <fieldset>
+    <legend>Update a Post</legend>
+    <form id="update-post-form" hx-put="#" hx-target="#messages" hx-swap="innerHTML" hx-ext="json-enc"
+      hx-request='{"credentials": true}'>
+      <div>
+        <label>Post ID:</label>
+        <input type="text" name="postId" required />
+      </div>
+      <div>
+        <label>Title:</label>
+        <input type="text" name="title" readonly />
+      </div>
+      <div>
+        <label>Content:</label>
+        <textarea name="content" readonly></textarea>
+      </div>
+      <div>
+        <label>Categories (comma-separated):</label>
+        <input type="text" name="categories" readonly />
+      </div>
+      <br />
+      <button type="button" id="fetch-post-data">Fetch Post Data</button>
+      <button type="submit" id="submit-update" class="hidden">Update Post</button>
+    </form>
+  </fieldset>
+
+  <!-- 10. Vote on a Post -->
+  <fieldset>
+    <legend>Vote on a Post</legend>
+    <form id="vote-post-form" hx-post="#" hx-target="#messages" hx-swap="innerHTML" hx-ext="json-enc"
+      hx-request='{"credentials": true}'>
+      <div>
+        <label>Post ID:</label>
+        <input type="text" name="postId" required />
+      </div>
+      <div>
+        <label>Vote Type (1 for upvote, -1 for downvote):</label>
+        <input type="number" name="vote_type" required min="-1" max="1" />
+      </div>
+      <br />
+      <button type="submit">Vote</button>
+    </form>
+  </fieldset>
+
   <script>
+
+    document.getElementById('vote-post-form').addEventListener('htmx:beforeRequest', function (event) {
+      // Prevent HTMX from sending the default request
+      event.preventDefault();
+
+      // Extract form data
+      const form = event.target;
+      const formData = new FormData(form);
+
+      // Construct the JSON payload manually
+      const jsonData = {
+        vote_type: parseInt(formData.get('vote_type'), 10) // Ensure vote_type is an integer
+      };
+
+      // Construct the URL dynamically
+      const postId = formData.get('postId');
+      const url = `http://localhost:8080/api/v1/posts/${postId}/vote`;
+
+      // Send a POST request using fetch
+      fetch(url, {
+        method: 'POST',
+        credentials: 'include', // Include cookies in the request
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(jsonData)
+      })
+        .then(response => {
+          if (!response.ok) {
+            throw new Error(`HTTP error! Status: ${response.status}`);
+          }
+          return response.json();
+        })
+        .then(data => {
+          // Update the target element with the response
+          const target = document.querySelector(form.getAttribute('hx-target'));
+          if (target) {
+            target.innerHTML = `<p class="success">Vote submitted successfully!</p><pre>${JSON.stringify(data, null, 2)}</pre>`;
+          }
+        })
+        .catch(error => {
+          console.error('Error:', error);
+          const target = document.querySelector(form.getAttribute('hx-target'));
+          if (target) {
+            target.innerHTML = `<p class="error">${error.message}</p>`;
+          }
+        });
+    });
+
+    document.getElementById('fetch-post-data').addEventListener('click', function () {
+      // Get the form and postId
+      const form = document.getElementById('update-post-form');
+      const postId = form.postId.value;
+
+      if (!postId) {
+        alert('Please enter a valid Post ID.');
+        return;
+      }
+
+      // Construct the URL dynamically
+      const url = `http://localhost:8080/api/v1/posts/${postId}`;
+
+      // Fetch the post data
+      fetch(url, {
+        method: 'GET',
+        credentials: 'include' // Include cookies in the request
+      })
+        .then(response => {
+          if (!response.ok) {
+            throw new Error(`HTTP error! Status: ${response.status}`);
+          }
+          return response.json();
+        })
+        .then(data => {
+          // Debugging: Log the response data
+          console.log('Fetched post data:', data);
+
+          // Ensure the response contains the expected structure
+          if (!data.data) {
+            throw new Error('Invalid response structure: "data" field is missing.');
+          }
+
+          const postData = data.data;
+
+          // Populate the form fields with the fetched data
+          form.title.value = postData.title || '';
+          form.content.value = postData.content || '';
+          form.categories.value = Array.isArray(postData.categories) ? postData.categories.join(', ') : '';
+
+          // Enable editing and show the "Update Post" button
+          form.title.readOnly = false;
+          form.content.readOnly = false;
+          form.categories.readOnly = false;
+          document.getElementById('submit-update').classList.remove('hidden');
+
+          // Show success message
+          const target = document.querySelector(form.getAttribute('hx-target'));
+          if (target) {
+            target.innerHTML = `<p class="success">Post data fetched successfully! You can now edit the fields.</p>`;
+          }
+        })
+        .catch(error => {
+          console.error('Error:', error);
+          const target = document.querySelector(form.getAttribute('hx-target'));
+          if (target) {
+            target.innerHTML = `<p class="error">${error.message}</p>`;
+          }
+        });
+    });
+
+    document.getElementById('update-post-form').addEventListener('htmx:beforeRequest', function (event) {
+      // Prevent HTMX from sending the default request
+      event.preventDefault();
+
+      // Extract form data
+      const form = event.target;
+      const formData = new FormData(form);
+
+      // Construct the JSON payload manually
+      const jsonData = {
+        title: formData.get('title'),
+        content: formData.get('content'),
+        categories: formData.get('categories').split(',').map(cat => cat.trim()) // Convert comma-separated string to array
+      };
+
+      // Construct the URL dynamically
+      const postId = formData.get('postId');
+      const url = `http://localhost:8080/api/v1/posts/${postId}`;
+
+      // Send a PUT request using fetch
+      fetch(url, {
+        method: 'PUT',
+        credentials: 'include', // Include cookies in the request
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(jsonData)
+      })
+        .then(response => {
+          if (!response.ok) {
+            throw new Error(`HTTP error! Status: ${response.status}`);
+          }
+          return response.json();
+        })
+        .then(data => {
+          // Update the target element with the response
+          const target = document.querySelector(form.getAttribute('hx-target'));
+          if (target) {
+            target.innerHTML = `<p class="success">Post updated successfully!</p><pre>${JSON.stringify(data, null, 2)}</pre>`;
+          }
+        })
+        .catch(error => {
+          console.error('Error:', error);
+          const target = document.querySelector(form.getAttribute('hx-target'));
+          if (target) {
+            target.innerHTML = `<p class="error">${error.message}</p>`;
+          }
+        });
+    });
+
+    document.getElementById('get-post-form').addEventListener('htmx:beforeRequest', function (event) {
+      // Prevent HTMX from sending the default request
+      event.preventDefault();
+
+      // Extract form data
+      const form = event.target;
+      const postId = form.postId.value;
+
+      // Construct the URL dynamically
+      const url = `http://localhost:8080/api/v1/posts/${postId}`;
+
+      // Send a GET request using fetch
+      fetch(url, {
+        method: 'GET',
+        credentials: 'include' // Include cookies in the request
+      })
+        .then(response => {
+          if (!response.ok) {
+            throw new Error(`HTTP error! Status: ${response.status}`);
+          }
+          return response.json();
+        })
+        .then(data => {
+          // Update the target element with the response
+          const target = document.querySelector(form.getAttribute('hx-target'));
+          if (target) {
+            target.innerHTML = `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+          }
+        })
+        .catch(error => {
+          console.error('Error:', error);
+          const target = document.querySelector(form.getAttribute('hx-target'));
+          if (target) {
+            target.innerHTML = `<p class="error">${error.message}</p>`;
+          }
+        });
+    });
+
+    document.getElementById('create-post-form').addEventListener('htmx:beforeRequest', function (event) {
+      // Prevent HTMX from sending the default form data
+      event.preventDefault();
+
+      // Extract form data
+      const form = event.target;
+      const formData = new FormData(form);
+
+      // Extract all selected checkbox values for categories
+      const categories = Array.from(formData.getAll('categories'));
+
+      // Construct the JSON payload manually
+      const jsonData = {
+        title: formData.get('title'),
+        content: formData.get('content'),
+        categories: categories // Ensure categories is always an array
+      };
+
+      // Debugging: Log the final JSON payload
+      console.log('JSON payload:', jsonData);
+
+      // Create a custom fetch request
+      fetch(form.getAttribute('hx-post'), {
+        method: 'POST',
+        credentials: "include",
+        headers: {
+          'Content-Type': 'application/json',
+          // Include credentials (cookies) in the request
+          'credentials': 'include'
+        },
+        body: JSON.stringify(jsonData)
+      })
+        .then(response => {
+          if (!response.ok) {
+            throw new Error(`HTTP error! Status: ${response.status}`);
+          }
+          return response.json();
+        })
+        .then(data => {
+          // Update the target element with the response
+          const target = document.querySelector(form.getAttribute('hx-target'));
+          if (target) {
+            target.innerHTML = JSON.stringify(data); // Display the response
+          }
+        })
+        .catch(error => {
+          console.error('Error:', error);
+          const target = document.querySelector(form.getAttribute('hx-target'));
+          if (target) {
+            target.innerHTML = `<p>Error: ${error.message}</p>`;
+          }
+        });
+    });
+
     document.body.addEventListener('htmx:afterRequest', function (evt) {
       let xhr = evt.detail.xhr;
       if (xhr.status >= 400) {

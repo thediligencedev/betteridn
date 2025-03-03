@@ -43,13 +43,9 @@ type SignInRequest struct {
 	Password string `json:"password" validate:"required"`
 }
 
+// TODO: remove check if r.method for all routes because it has been handled by routes mux handler
 // SignUp -> sign up user, send confirmation
 func (h *Handler) SignUp(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		response.RespondWithError(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-
 	var req SignUpRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		response.RespondWithError(w, http.StatusBadRequest, "invalid request body")

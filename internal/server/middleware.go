@@ -1,17 +1,19 @@
+// server/middleware.go
 package server
 
 import (
-	"encoding/json"
-	"fmt"
+	"context"
+	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/alexedwards/scs/v2"
+	"github.com/thediligencedev/betteridn/internal/models"
+	"github.com/thediligencedev/betteridn/pkg/response"
 )
 
 type Middleware func(http.Handler) http.Handler
 
-// Chain applies a list of middlewares in order.
 func Chain(h http.Handler, middlewares ...Middleware) http.Handler {
 	for _, m := range middlewares {
 		h = m(h)
@@ -19,55 +21,78 @@ func Chain(h http.Handler, middlewares ...Middleware) http.Handler {
 	return h
 }
 
-func Logger(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
+func Logger(sessionManager *scs.SessionManager) Middleware {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			start := time.Now()
+			rw := &statusResponseWriter{ResponseWriter: w}
 
-		// We'll implement a small wrapper to capture response status
-		rw := &statusResponseWriter{ResponseWriter: w, statusCode: 200}
+			next.ServeHTTP(rw, r)
 
-		next.ServeHTTP(rw, r)
+			userID := sessionManager.GetString(r.Context(), "user_id")
+			if userID == "" {
+				userID = "unauthenticated"
+			}
 
-		duration := time.Since(start)
+			logger := slog.Default().With(
+				slog.String("method", r.Method),
+				slog.String("path", r.URL.Path),
+				slog.Int("status", rw.statusCode),
+				slog.Float64("duration_ms", float64(time.Since(start).Nanoseconds())/1e6),
+				slog.String("user_id", userID),
+				slog.String("ip", r.RemoteAddr),
+				slog.String("user_agent", r.UserAgent()),
+			)
 
-		// Build the log entry
-		logEntry := map[string]interface{}{
-			"timestamp":   time.Now().Format(time.RFC3339),
-			"level":       "info",
-			"msg":         "HTTP request",
-			"method":      r.Method,
-			"path":        r.URL.Path,
-			"status":      rw.statusCode,
-			"latency_ms":  duration.Milliseconds(),
-			"user_agent":  r.UserAgent(),
-			"remote_addr": r.RemoteAddr,
-		}
-
-		// Print as JSON line
-		logLine, _ := json.Marshal(logEntry)
-		println(string(logLine)) // or use your logger
-	})
+			logger.Info("HTTP request")
+		})
+	}
 }
 
-// statusResponseWriter is a helper to capture status code
-type statusResponseWriter struct {
-	http.ResponseWriter
-	statusCode int
+func WithAuth(sessionManager *scs.SessionManager) Middleware {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Get user ID from the session
+			userID := sessionManager.GetString(r.Context(), "user_id")
+			slog.Info("Session user ID", slog.String("user_id", userID))
+
+			if userID == "" {
+				response.RespondWithError(w, http.StatusUnauthorized, "unauthorized")
+				return
+			}
+
+			// Add user ID to the context
+			ctx := context.WithValue(r.Context(), models.UserContextKey, userID)
+			r = r.WithContext(ctx)
+
+			// Pass control to the next handler
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
-func (srw *statusResponseWriter) WriteHeader(code int) {
-	srw.statusCode = code
-	srw.ResponseWriter.WriteHeader(code)
+func Optional(sessionManager *scs.SessionManager) Middleware {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Session is already loaded by scs middleware
+			// This middleware is for semantic purposes only. no-op middleware
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
-// TODO: fix the origin, allow methods, and allow headers as needed
 func CORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// w.Header().Set("Access-Control-Allow-Origin", "http://localhost:5500")
+		// w.Header().Set("Access-Control-Allow-Credentials", "true")
+		// w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS")
+		// w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+
 		// For development only
 		w.Header().Set("Access-Control-Allow-Origin", "http://localhost:5500")
 		w.Header().Set("Access-Control-Allow-Credentials", "true")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, hx-current-url, hx-request, hx-target, Accept, Content-Length, Accept-Encoding, Accept-Language")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PUT")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, hx-current-url, hx-request, hx-target, hx-trigger, Accept, Content-Length, Accept-Encoding, Accept-Language, Credentials")
 
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusOK)
@@ -78,27 +103,12 @@ func CORS(next http.Handler) http.Handler {
 	})
 }
 
-// WithAuth checks if a user is authenticated by checking session data.
-// If no user is found, it returns 401 Unauthorized.
-func WithAuth(sessionManager *scs.SessionManager) Middleware {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// If preflight request, pass through
-			if r.Method == http.MethodOptions {
-				next.ServeHTTP(w, r)
-				return
-			}
+type statusResponseWriter struct {
+	http.ResponseWriter
+	statusCode int
+}
 
-			userID := sessionManager.GetString(r.Context(), "user_id")
-			if userID == "" {
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusUnauthorized)
-				resp := map[string]string{"message": "unauthorized"}
-				_ = json.NewEncoder(w).Encode(resp)
-				fmt.Println("dasdsa")
-				return
-			}
-			next.ServeHTTP(w, r)
-		})
-	}
+func (w *statusResponseWriter) WriteHeader(code int) {
+	w.statusCode = code
+	w.ResponseWriter.WriteHeader(code)
 }

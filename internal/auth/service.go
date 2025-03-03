@@ -28,6 +28,8 @@ func NewAuthService(pool *pgxpool.Pool, cs *ConfirmationService) *AuthService {
 	return &AuthService{pool: pool, cs: cs}
 }
 
+// TODO: for signup and signin don't forget to lower the email and username
+
 // SignUp (email-based). Now with domain checks + sending email confirm.
 func (s *AuthService) SignUp(ctx context.Context, username, emailStr, plainPassword string) error {
 	// 1. Basic check if user exists

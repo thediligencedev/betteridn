@@ -26,7 +26,6 @@ CREATE TABLE email_confirmations (
     is_stale BOOLEAN DEFAULT FALSE
 );
 
-
 -- Table: posts
 CREATE TABLE IF NOT EXISTS posts (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -34,7 +33,7 @@ CREATE TABLE IF NOT EXISTS posts (
     title TEXT NOT NULL,
     content TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW(),
-    edited_at TIMESTAMPTZ
+    updated_at TIMESTAMPTZ
 );
 
 -- Table: comments
@@ -44,7 +43,7 @@ CREATE TABLE IF NOT EXISTS comments (
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     content TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW(),
-    edited_at TIMESTAMPTZ
+    updated_at TIMESTAMPTZ
 );
 
 -- Table: post_comments_metadata
@@ -87,18 +86,18 @@ CREATE TABLE IF NOT EXISTS login_providers (
     UNIQUE (user_id, provider)
 );
 
--- Table: tags
-CREATE TABLE IF NOT EXISTS tags (
+-- Table: categories
+CREATE TABLE IF NOT EXISTS categories (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name TEXT NOT NULL UNIQUE,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Table: post_tags
-CREATE TABLE IF NOT EXISTS post_tags (
+-- Table: post_categories
+CREATE TABLE IF NOT EXISTS post_categories (
     post_id UUID NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
-    tag_id UUID NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
-    PRIMARY KEY (post_id, tag_id)
+    category_id UUID NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
+    PRIMARY KEY (post_id, category_id)
 );
 
 -- Table: notifications

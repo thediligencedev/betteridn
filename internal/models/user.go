@@ -20,3 +20,9 @@ type User struct {
 	CreatedAt        time.Time    `db:"created_at" json:"created_at"`
 	UpdatedAt        time.Time    `db:"updated_at" json:"updated_at"`
 }
+
+// to avoid naming collisions in context
+// and to store scs session inside golang context
+type contextKey string
+
+const UserContextKey contextKey = "user_id"
