@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/alexedwards/scs/v2"
+	"github.com/thediligencedev/betteridn/internal/config"
 	"github.com/thediligencedev/betteridn/internal/models"
 	"github.com/thediligencedev/betteridn/pkg/response"
 )
@@ -81,26 +82,28 @@ func Optional(sessionManager *scs.SessionManager) Middleware {
 	}
 }
 
-func CORS(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// w.Header().Set("Access-Control-Allow-Origin", "http://localhost:5500")
-		// w.Header().Set("Access-Control-Allow-Credentials", "true")
-		// w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS")
-		// w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+func CORS(cfg *config.Config) Middleware {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Use frontend URL from config, fallback to localhost:5173
+			allowOrigin := cfg.FrontendURL
+			if allowOrigin == "" {
+				allowOrigin = "http://localhost:5173"
+			}
 
-		// For development only
-		w.Header().Set("Access-Control-Allow-Origin", "http://localhost:5500")
-		w.Header().Set("Access-Control-Allow-Credentials", "true")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PUT")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, hx-current-url, hx-request, hx-target, hx-trigger, Accept, Content-Length, Accept-Encoding, Accept-Language, Credentials")
+			w.Header().Set("Access-Control-Allow-Origin", allowOrigin)
+			w.Header().Set("Access-Control-Allow-Credentials", "true")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PUT")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, hx-current-url, hx-request, hx-target, hx-trigger, Accept, Content-Length, Accept-Encoding, Accept-Language, Credentials")
 
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusOK)
-			return
-		}
+			if r.Method == http.MethodOptions {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
 
-		next.ServeHTTP(w, r)
-	})
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 type statusResponseWriter struct {

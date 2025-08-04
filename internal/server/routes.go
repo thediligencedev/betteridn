@@ -19,9 +19,9 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	postHandler := post.NewHandler(s.pool)
 
 	// Middleware stacks
-	public := []Middleware{Logger(s.sessionManager), CORS}
-	protected := []Middleware{Logger(s.sessionManager), WithAuth(s.sessionManager), CORS}
-	optional := []Middleware{Logger(s.sessionManager), Optional(s.sessionManager), CORS}
+	public := []Middleware{Logger(s.sessionManager), CORS(s.cfg)}
+	protected := []Middleware{Logger(s.sessionManager), WithAuth(s.sessionManager), CORS(s.cfg)}
+	optional := []Middleware{Logger(s.sessionManager), Optional(s.sessionManager), CORS(s.cfg)}
 
 	// Map to track registered OPTIONS patterns
 	registeredOptions := make(map[string]bool)
@@ -58,9 +58,14 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 
 	MountSwaggerDocs(mux)
 
-	// Protected example
+	// Protected example - redirect to frontend
 	register("GET", "/home", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("Welcome Home! You are logged in."))
+		redirectURL := s.cfg.FrontendURL
+		if redirectURL == "" {
+			w.Write([]byte("Welcome Home! You are logged in."))
+			return
+		}
+		http.Redirect(w, r, redirectURL, http.StatusSeeOther)
 	}), protected)
 }
 

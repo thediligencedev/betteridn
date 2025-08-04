@@ -123,7 +123,12 @@ func (gh *GoogleHandler) GoogleCallback(w http.ResponseWriter, r *http.Request) 
 		gh.sessionManager.Put(ctx, "google_refresh_token", token.RefreshToken)
 	}
 
-	http.Redirect(w, r, "/home", http.StatusSeeOther)
+	// Redirect to frontend URL or fallback to /home
+	redirectURL := gh.cfg.FrontendURL
+	if redirectURL == "" {
+		redirectURL = "/home"
+	}
+	http.Redirect(w, r, redirectURL, http.StatusSeeOther)
 }
 
 // fetch userinfo
