@@ -1,0 +1,550 @@
+openapi: 3.0.3
+info:
+  title: BetterIDN API
+  description: API documentation for BetterIDN application
+  version: "1.0.0"
+
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Local dev server
+
+paths:
+  /auth/signup:
+    post:
+      summary: Sign up via email
+      tags: 
+        - auth
+      description: Create a new user account using email and password.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignUpRequest'
+      responses:
+        "200":
+          description: Successfully created user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignUpSuccessResponse'
+        "400":
+          description: Bad request (invalid body, validation error)
+        "409":
+          description: User already exists
+        "500":
+          description: Internal server error
+
+  /auth/signin:
+    post:
+      summary: Sign in via email
+      tags: 
+        - auth
+      description: Log in a user using email and password.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignInRequest'
+      responses:
+        "200":
+          description: User signed in
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignInSuccessResponse'
+        "400":
+          description: Bad request
+        "401":
+          description: Invalid credentials
+        "500":
+          description: Internal server error
+
+  /auth/signout:
+    post:
+      summary: Sign out
+      tags: 
+        - auth
+      description: Logs the user out by destroying the session.
+      responses:
+        "200":
+          description: Successfully signed out
+        "401":
+          description: Unauthorized (not logged in)
+        "500":
+          description: Internal server error
+
+  /auth/session:
+    get:
+      summary: Get current session
+      tags: 
+        - auth
+      description: Returns the currently logged in user's ID if authenticated.
+      responses:
+        "200":
+          description: Current session data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CurrentSessionResponse'
+        "401":
+          description: Unauthorized (session not found)
+  
+  /auth/google/login:
+    get:
+      summary: Google OAuth login
+      tags: 
+        - auth
+      description: Redirects the user to Google's consent page for OAuth 2.0.
+      responses:
+        "302":
+          description: Redirect to Google
+
+  /auth/google/callback:
+    get:
+      summary: Google OAuth callback
+      tags: 
+        - auth
+      description: Google redirects the user here after user consents. Exchanges the token and logs user in.
+      parameters:
+        - name: code
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: state
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "302":
+          description: Redirect to /home on success
+        "400":
+          description: Invalid or missing parameters
+        "500":
+          description: Internal server error
+
+  /auth/confirm-email:
+    get:
+      summary: Confirm email
+      tags: 
+        - auth
+      description: Confirms user's email by verifying the provided token.
+      parameters:
+        - name: token
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Email confirmed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        "400":
+          description: Invalid or stale token
+
+  /auth/resend-confirmation:
+    post:
+      summary: Resend email confirmation
+      tags: 
+        - auth
+      description: Resends a confirmation email if allowed (rate-limited).
+      responses:
+        "200":
+          description: Confirmation email resent
+        "401":
+          description: Unauthorized (user not logged in)
+        "429":
+          description: Rate limit error
+        "500":
+          description: Internal server error
+  /posts:
+    post:
+      summary: Create a new post
+      tags:
+        - posts
+      description: Creates a new post with title, content, and categories.
+      security:
+        - CookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePostRequest'
+      responses:
+        "201":
+          description: Post created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreatePostSuccessResponse'
+        "400":
+          description: Bad request (validation error or invalid request body)
+        "401":
+          description: Unauthorized (user not logged in)
+        "500":
+          description: Internal server error
+
+    get:
+      summary: Get paginated list of posts
+      tags:
+        - posts
+      description: Retrieves a paginated list of posts.
+      parameters:
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: List of posts retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetPostsSuccessResponse'
+        "400":
+          description: Invalid pagination parameters
+        "500":
+          description: Internal server error
+
+  /posts/{postId}:
+    get:
+      summary: Get a post by ID
+      tags:
+        - posts
+      description: Retrieves a specific post by its ID.
+      parameters:
+        - name: postId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Post retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetPostSuccessResponse'
+        "400":
+          description: Invalid post ID format
+        "404":
+          description: Post not found
+        "500":
+          description: Internal server error
+
+    put:
+      summary: Update a post
+      tags:
+        - posts
+      description: Updates an existing post with new title, content, and categories.
+      security:
+        - CookieAuth: []
+      parameters:
+        - name: postId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePostRequest'
+      responses:
+        "200":
+          description: Post updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpdatePostSuccessResponse'
+        "400":
+          description: Bad request (validation error or invalid request body)
+        "401":
+          description: Unauthorized (user not logged in)
+        "403":
+          description: Forbidden (user not authorized to update this post)
+        "404":
+          description: Post not found
+        "500":
+          description: Internal server error
+
+  /posts/{postId}/vote:
+    post:
+      summary: Vote on a post
+      tags:
+        - posts
+      description: Allows a user to vote on a post (upvote or downvote).
+      security:
+        - CookieAuth: []
+      parameters:
+        - name: postId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VotePostRequest'
+      responses:
+        "200":
+          description: Vote recorded successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VotePostSuccessResponse'
+        "400":
+          description: Bad request (invalid vote type or request body)
+        "401":
+          description: Unauthorized (user not logged in)
+        "404":
+          description: Post not found
+        "500":
+          description: Internal server error
+
+components:
+  schemas:
+    SignUpRequest:
+      type: object
+      properties:
+        username:
+          type: string
+          example: johndoe
+        email:
+          type: string
+          format: email
+          example: johndoe@example.com
+        password:
+          type: string
+          format: password
+          example: passw0rd
+      required:
+        - username
+        - email
+        - password
+
+    SignInRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+          example: johndoe@example.com
+        password:
+          type: string
+          format: password
+          example: passw0rd
+      required:
+        - email
+        - password
+
+    SignUpSuccessResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: "successfully created user"
+
+    SignInSuccessResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: "user successfully signed in"
+        data:
+          type: object
+          properties:
+            user_id:
+              type: string
+              format: uuid
+              example: "4fa85f64-5717-4562-b3fc-2c963f66afa6"
+
+    CurrentSessionResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: "successfully get current session"
+        data:
+          type: object
+          properties:
+            user_id:
+              type: string
+              format: uuid
+              example: "4fa85f64-5717-4562-b3fc-2c963f66afa6"
+
+    CreatePostRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          example: "My First Post"
+        content:
+          type: string
+          example: "This is the content of my first post."
+        categories:
+          type: array
+          items:
+            type: string
+          example: ["technology", "golang"]
+      required:
+        - title
+        - content
+        - categories
+
+    CreatePostSuccessResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: "post created successfully"
+        data:
+          type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+              example: "4fa85f64-5717-4562-b3fc-2c963f66afa6"
+
+    GetPostsSuccessResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: "posts retrieved successfully"
+        data:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+                format: uuid
+                example: "4fa85f64-5717-4562-b3fc-2c963f66afa6"
+              title:
+                type: string
+                example: "My First Post"
+              content:
+                type: string
+                example: "This is the content of my first post."
+              categories:
+                type: array
+                items:
+                  type: string
+                example: ["technology", "golang"]
+
+    GetPostSuccessResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: "post retrieved successfully"
+        data:
+          type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+              example: "4fa85f64-5717-4562-b3fc-2c963f66afa6"
+            title:
+              type: string
+              example: "My First Post"
+            content:
+              type: string
+              example: "This is the content of my first post."
+            categories:
+              type: array
+              items:
+                type: string
+              example: ["technology", "golang"]
+
+    UpdatePostRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          example: "Updated Title"
+        content:
+          type: string
+          example: "This is the updated content."
+        categories:
+          type: array
+          items:
+            type: string
+          example: ["updated-category"]
+      required:
+        - title
+        - content
+        - categories
+
+    UpdatePostSuccessResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: "post updated successfully"
+        data:
+          type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+              example: "4fa85f64-5717-4562-b3fc-2c963f66afa6"
+
+    VotePostRequest:
+      type: object
+      properties:
+        vote_type:
+          type: integer
+          enum: [1, -1]
+          example: 1
+      required:
+        - vote_type
+
+    VotePostSuccessResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: "vote recorded successfully"
+        data:
+          type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+              example: "4fa85f64-5717-4562-b3fc-2c963f66afa6"
+            vote_count:
+              type: integer
+              example: 42
+
+  securitySchemes:
+    CookieAuth:
+      type: apiKey
+      in: cookie
+      name: session_token
+
